@@ -431,6 +431,7 @@ int ist30xx_internal_suspend(struct ist30xx_data *data)
 #else
 	ist30xx_power_off(data);
 #endif
+
 	return 0;
 }
 

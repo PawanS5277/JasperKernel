@@ -34,6 +34,10 @@
 #include <linux/fs.h>
 #include <asm/uaccess.h>
 
+#ifdef CONFIG_WAKE_GESTURES
+#include <linux/wake_gestures.h>
+#endif
+
 #if CTP_CHARGER_DETECT
 #include <linux/power_supply.h>
 #endif
@@ -156,6 +160,10 @@ static struct proc_dir_entry *ft5x0x_proc_entry = NULL;
 static u8 is_ic_update_crash = 0;
 static struct i2c_client *update_client = NULL;
 
+#ifdef CONFIG_WAKE_GESTURES
+static bool ts_suspended = false;
+#endif
+
 #if CTP_CHARGER_DETECT
 extern int power_supply_get_battery_charge_state(struct power_supply *psy);
 static struct power_supply *batt_psy = NULL;
@@ -208,6 +216,12 @@ static int focal_i2c_Read(unsigned char *writebuf,
 	}
 	return ret;
 }
+
+#ifdef CONFIG_WAKE_GESTURES
+bool scr_suspended_ft(void) {
+	return ts_suspended;
+}
+#endif
 
 static int focal_i2c_Write(unsigned char *writebuf, int writelen)
 {
@@ -595,6 +609,9 @@ static int ft5x06_ts_pinctrl_select(struct ft5x06_ts_data *ft5x06_data,
 }
 
 
+#ifdef CONFIG_WAKE_GESTURES
+static bool ev_btn_status = false;
+#endif
 #ifdef CONFIG_PM
 static int ft5x06_ts_suspend(struct device *dev)
 {
@@ -611,6 +628,39 @@ static int ft5x06_ts_suspend(struct device *dev)
 		dev_info(dev, "Already in suspend state\n");
 		return 0;
 	}
+
+#ifdef CONFIG_WAKE_GESTURES
+	if (s2w_switch || dt2w_switch) {
+		if (!ev_btn_status) {
+			for (i = 0; i < data->pdata->num_max_touches; i++) {
+				input_mt_slot(data->input_dev, i);
+				input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, 0);
+			}
+			input_mt_report_pointer_emulation(data->input_dev, false);
+			__clear_bit(BTN_TOUCH, data->input_dev->keybit);
+			input_sync(data->input_dev);
+			ev_btn_status = true;
+		}
+
+		err = enable_irq_wake(data->client->irq);
+		if (err)
+			dev_err(&data->client->dev,
+				"%s: set_irq_wake failed\n", __func__);
+		data->suspended = true;
+		ts_suspended = true;
+
+		if (dt2w_switch_changed) {
+			dt2w_switch = dt2w_switch_temp;
+			dt2w_switch_changed = false;
+		}
+		if (s2w_switch_changed) {
+			s2w_switch = s2w_switch_temp;
+			s2w_switch_changed = false;
+		}
+
+		return err;
+	}
+#endif
 
 	disable_irq(data->client->irq);
 
@@ -646,6 +696,7 @@ static int ft5x06_ts_suspend(struct device *dev)
 	}
 
 	data->suspended = true;
+	ts_suspended = true;
 
 	return 0;
 
@@ -671,6 +722,23 @@ static int ft5x06_ts_resume(struct device *dev)
 		return 0;
 	}
 
+#ifdef CONFIG_WAKE_GESTURES
+	if (s2w_switch || dt2w_switch) {
+		if (ev_btn_status) {
+			__set_bit(BTN_TOUCH, data->input_dev->keybit);
+			input_sync(data->input_dev);
+			ev_btn_status = false;
+		}
+		err = disable_irq_wake(data->client->irq);
+		if (err)
+			dev_err(dev, "%s: disable_irq_wake failed\n",
+				__func__);
+		data->suspended = false;
+		ts_suspended = false;
+
+		return err;
+	}
+#endif
 
 	if (data->pdata->power_on) {
 		err = data->pdata->power_on(true);
@@ -715,6 +783,7 @@ static int ft5x06_ts_resume(struct device *dev)
 
 
 	data->suspended = false;
+	ts_suspended = false;
 
 	return 0;
 }

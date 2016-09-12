@@ -52,6 +52,10 @@
 #include <linux/file.h>
 #include <linux/err.h>
 
+#ifdef CONFIG_WAKE_GESTURES
+#include <linux/wake_gestures.h>
+#endif
+
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #include <linux/of_gpio.h>
@@ -110,6 +114,8 @@ int fhd_key_dim_x[] = { 0, FHD_MENU_KEY_X, FHD_HOME_KEY_X, FHD_BACK_KEY_X, };
 
 struct ist30xx_data *ts_data;
 struct ist30xx_data *global_ts_data;
+
+static bool ts_suspended = false;
 
 #if CTP_CHARGER_DETECT
 extern int power_supply_get_battery_charge_state(struct power_supply *psy);
@@ -201,6 +207,12 @@ void ist30xx_enable_irq(struct ist30xx_data *data)
 		data->status.event_mode = true;
 	}
 }
+
+#ifdef CONFIG_WAKE_GESTURES
+bool scr_suspended_ist(void) {
+	return ts_suspended;
+}
+#endif
 
 void ist30xx_scheduled_reset(struct ist30xx_data *data)
 {
@@ -1246,6 +1258,25 @@ irq_ic_err:
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_WAKE_GESTURES
+static bool ev_btn_status = false;
+static bool ist30xx_irq_active = false;
+static void ist30xx_irq_handler(int irq, bool active)
+{
+	if (active) {
+		if (!ist30xx_irq_active) {
+			enable_irq_wake(irq);
+			ist30xx_irq_active = true;
+		}
+	} else {
+		if (ist30xx_irq_active) {
+			disable_irq_wake(irq);
+			ist30xx_irq_active = false;
+		}
+	}
+}
+#endif
+
 #ifdef CONFIG_PM
 static int ist30xx_suspend(struct device *dev)
 {
@@ -1253,6 +1284,30 @@ static int ist30xx_suspend(struct device *dev)
 
 	if (data->debugging_mode)
 		return 0;
+
+#ifdef CONFIG_WAKE_GESTURES
+	if (s2w_switch || dt2w_switch) {
+
+		if (!ev_btn_status) {
+			/* release all touches */
+			clear_input_data(data);
+			ev_btn_status = true;
+		}
+		ist30xx_irq_handler(data->client->irq, true);
+		ts_suspended = true;
+
+		if (dt2w_switch_changed) {
+			dt2w_switch = dt2w_switch_temp;
+			dt2w_switch_changed = false;
+		}
+		if (s2w_switch_changed) {
+			s2w_switch = s2w_switch_temp;
+			s2w_switch_changed = false;
+		}
+
+		return 0;
+	}
+#endif
 
 	del_timer(&event_timer);
 	cancel_delayed_work_sync(&data->work_noise_protect);
@@ -1274,6 +1329,8 @@ static int ist30xx_suspend(struct device *dev)
 #endif
 	mutex_unlock(&ist30xx_mutex);
 
+	ts_suspended = true;
+
 	return 0;
 }
 
@@ -1285,6 +1342,21 @@ static int ist30xx_resume(struct device *dev)
 
 	if (data->debugging_mode && data->status.power)
 		return 0;
+
+#ifdef CONFIG_WAKE_GESTURES
+	if (s2w_switch || dt2w_switch) {
+
+		if (ev_btn_status) {
+			input_sync(data->input_dev);
+			ev_btn_status = false;
+		}
+
+		ist30xx_irq_handler(data->client->irq, false);
+		ts_suspended = false;
+
+		return 0;
+	}
+#endif
 
 	mutex_lock(&ist30xx_mutex);
 	ist30xx_internal_resume(data);
@@ -1307,6 +1379,8 @@ static int ist30xx_resume(struct device *dev)
 	ist30xx_start(data);
 	ist30xx_enable_irq(data);
 	mutex_unlock(&ist30xx_mutex);
+
+	ts_suspended = false;
 
 #if CTP_CHARGER_DETECT
 	schedule_delayed_work(&data->work_charger_check,
