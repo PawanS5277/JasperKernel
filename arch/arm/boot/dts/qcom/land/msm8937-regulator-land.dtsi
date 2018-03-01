@@ -30,6 +30,8 @@
 	regulator-always-on;
 };
 
+/*
 &apc_vreg_corner {
 	qcom,cpr-voltage-floor =   <1150000 1150000 1250000>;
 };
+ */

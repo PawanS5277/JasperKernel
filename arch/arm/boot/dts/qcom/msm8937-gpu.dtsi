@@ -152,13 +152,15 @@
 
 			compatible = "qcom,gpu-pwrlevels";
 
+			qcom,initial-pwrlevel = <2>;
+
 			/* TURBO */
 			qcom,gpu-pwrlevel@0 {
 				reg = <0>;
-				qcom,gpu-freq = <450000000>;
-				qcom,bus-freq = <9>;
-				qcom,bus-min = <9>;
-				qcom,bus-max = <9>;
+				qcom,gpu-freq = <500000000>;
+				qcom,bus-freq = <10>;
+				qcom,bus-min = <10>;
+				qcom,bus-max = <10>;
 			};
 
 			/* NOM+ */
