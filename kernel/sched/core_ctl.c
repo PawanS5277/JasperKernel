@@ -989,13 +989,24 @@ void disable_core_control(bool disable)
 {
 	struct cpu_data *state;
 
+	/* Big cluster mask */
 	state = &per_cpu(cpu_state, 0);
-	if (state->inited && (state->disabled != disable))
+	if (state->inited && (state->disabled != disable)) {
 		state->disabled = disable;
+		if (!state->disabled) {
+			if (state->min_cpus > 2)
+				state->min_cpus = 2;
+			wake_up_hotplug_thread(state);
+		}
+	}
 
+	/* Little cluster mask */
 	state = &per_cpu(cpu_state, 4);
-	if (state->inited && (state->disabled != disable))
+	if (state->inited && (state->disabled != disable)) {
 		state->disabled = disable;
+		if (!state->disabled)
+			wake_up_hotplug_thread(state);
+	}
 }
 
 /* ============================ init code ============================== */
