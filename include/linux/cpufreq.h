@@ -537,6 +537,15 @@ extern struct cpufreq_governor cpufreq_gov_sched;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_ELECTRON)
 extern struct cpufreq_governor cpufreq_gov_electron;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_electron)
+<<<<<<< HEAD
+=======
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_LIONHEART)
+extern struct cpufreq_governor cpufreq_gov_lionheart;
+#define CPUFREQ_DEFAULT_GOVERNOR 	(&cpufreq_gov_LIONHEART)
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_LISI)
+extern struct cpufreq_governor cpufreq_gov_lisi;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_lisi)
+>>>>>>> e909a9409068... cpufreq_lisi: Initial bringup of Lisi cpu govenror
 #endif
 
 /*********************************************************************
