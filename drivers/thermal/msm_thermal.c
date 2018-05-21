@@ -4837,12 +4837,31 @@ static ssize_t show_cc_enabled(struct kobject *kobj,
 	return snprintf(buf, PAGE_SIZE, "%d\n", core_control_enabled);
 }
 
+#ifdef CONFIG_ASMP
+extern int asmp_enabled __read_mostly;
+#endif
+#ifdef CONFIG_AIO_HOTPLUG
+extern int AiO_HotPlug;
+#endif
 static ssize_t __ref store_cc_enabled(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	int ret = 0;
 	int val = 0;
 	uint32_t cpu = 0;
+
+#ifdef CONFIG_ASMP
+	if (asmp_enabled) {
+		core_control_enabled = 0;
+		goto done_store_cc;
+	}
+#endif
+#ifdef CONFIG_AIO_HOTPLUG
+	if (AiO_HotPlug) {
+		core_control_enabled = 0;
+		goto done_store_cc;
+	}
+#endif
 
 	if (!mitigation) {
 		pr_err("Thermal Mitigations disabled.\n");
@@ -4887,6 +4906,39 @@ static ssize_t __ref store_cc_enabled(struct kobject *kobj,
 
 done_store_cc:
 	return count;
+}
+
+void external_core_control_panel(bool enabled)
+{
+	uint32_t cpu = 0;
+
+	if (enabled && !core_control_enabled) {
+		core_control_enabled = 1;
+		pr_info("Core control enabled\n");
+		cpus_previously_online_update();
+		register_cpu_notifier(&msm_thermal_cpu_notifier);
+		/*
+		 * Re-evaluate thermal core condition, update current status
+		 * and set threshold for all cpus.
+		 */
+		hotplug_init_cpu_offlined();
+		mutex_lock(&core_control_mutex);
+		update_offline_cores(cpus_offlined);
+		if (hotplug_enabled && hotplug_task) {
+			for_each_possible_cpu(cpu) {
+				if (!(msm_thermal_info.core_control_mask &
+					BIT(cpus[cpu].cpu)))
+					continue;
+				sensor_mgr_set_threshold(cpus[cpu].sensor_id,
+				&cpus[cpu].threshold[HOTPLUG_THRESHOLD_HIGH]);
+			}
+		}
+		mutex_unlock(&core_control_mutex);
+	} else if (!enabled && core_control_enabled) {
+		core_control_enabled = 0;
+		pr_info("Core control disabled\n");
+		unregister_cpu_notifier(&msm_thermal_cpu_notifier);
+	}
 }
 
 static ssize_t show_cpus_offlined(struct kobject *kobj,
