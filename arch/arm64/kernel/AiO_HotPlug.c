@@ -275,6 +275,9 @@ static ssize_t show_toggle(struct kobject *kobj,
 #ifdef CONFIG_ASMP
 extern int asmp_enabled __read_mostly;
 #endif
+#ifdef CONFIG_THERMAL_MONITOR
+extern void external_core_control_panel(bool enabled);
+#endif
 static ssize_t store_toggle(struct kobject *kobj,
 			     struct kobj_attribute *attr,
 			     const char *buf, size_t count)
@@ -303,9 +306,15 @@ static ssize_t store_toggle(struct kobject *kobj,
 #ifdef CONFIG_SCHED_CORE_CTL
 	   disable_core_control(true);
 #endif
+#ifdef CONFIG_THERMAL_MONITOR
+	   external_core_control_panel(false);
+#endif
 	   AiO_HotPlug_start();
 	} else {
 	   AiO_HotPlug_stop();
+#ifdef CONFIG_THERMAL_MONITOR
+	   external_core_control_panel(true);
+#endif
 #ifdef CONFIG_SCHED_CORE_CTL
 	   disable_core_control(false);
 #endif

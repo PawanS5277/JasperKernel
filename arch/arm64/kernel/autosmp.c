@@ -383,6 +383,9 @@ static void __ref asmp_stop(void)
 #ifdef CONFIG_AIO_HOTPLUG
 extern int AiO_HotPlug;
 #endif
+#ifdef CONFIG_THERMAL_MONITOR
+extern void external_core_control_panel(bool enabled);
+#endif
 static int set_enabled(const char *val,
 			     const struct kernel_param *kp)
 {
@@ -400,6 +403,9 @@ static int set_enabled(const char *val,
 #ifdef CONFIG_SCHED_CORE_CTL
 		disable_core_control(true);
 #endif
+#ifdef CONFIG_THERMAL_MONITOR
+		external_core_control_panel(false);
+#endif
 		asmp_start();
 	} else {
 #ifdef CONFIG_AIO_HOTPLUG
@@ -407,6 +413,9 @@ static int set_enabled(const char *val,
 			return ret;
 #endif
 		asmp_stop();
+#ifdef CONFIG_THERMAL_MONITOR
+		external_core_control_panel(true);
+#endif
 #ifdef CONFIG_SCHED_CORE_CTL
 		disable_core_control(false);
 #endif
