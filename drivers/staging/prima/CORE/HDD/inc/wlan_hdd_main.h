@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -54,9 +54,15 @@
 #include <wlan_hdd_wmm.h>
 #include <wlan_hdd_cfg.h>
 #include <linux/spinlock.h>
-#ifdef WLAN_OPEN_SOURCE
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && \
+	defined(WLAN_OPEN_SOURCE)
+#include <linux/device.h>
+#include <linux/pm_wakeup.h>
+#else
 #include <linux/wakelock.h>
 #endif
+
 #include <wlan_hdd_ftm.h>
 #ifdef FEATURE_WLAN_TDLS
 #include "wlan_hdd_tdls.h"
@@ -71,6 +77,17 @@
 /** Number of attempts to detect/remove card */
 #define LIBRA_CARD_INSERT_DETECT_MAX_COUNT      5
 #define LIBRA_CARD_REMOVE_DETECT_MAX_COUNT      5
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)) || \
+	defined(CFG80211_REMOVE_IEEE80211_BACKPORT)
+#define HDD_NL80211_BAND_2GHZ   NL80211_BAND_2GHZ
+#define HDD_NL80211_BAND_5GHZ   NL80211_BAND_5GHZ
+#define HDD_NUM_NL80211_BANDS   NUM_NL80211_BANDS
+#else
+#define HDD_NL80211_BAND_2GHZ   IEEE80211_BAND_2GHZ
+#define HDD_NL80211_BAND_5GHZ   IEEE80211_BAND_5GHZ
+#define HDD_NUM_NL80211_BANDS   ((enum nl80211_band)IEEE80211_NUM_BANDS)
+#endif
 
 /** Number of Tx Queues. This should be same as the one
  *  used in TL WLANTL_NUM_TX_QUEUES */
@@ -105,6 +122,7 @@
 
 /** Maximum time(ms)to wait for disconnect to complete **/
 #define WLAN_WAIT_TIME_DISCONNECT  5000
+#define WLAN_WAIT_DISCONNECT_ALREADY_IN_PROGRESS  1000
 #define WLAN_WAIT_TIME_STATS       800
 #define WLAN_WAIT_TIME_POWER       5000
 #define WLAN_WAIT_TIME_COUNTRY     1000
@@ -211,6 +229,9 @@
 /* Maximum number of interfaces allowed(STA, P2P Device, P2P Interface) */
 #define WLAN_MAX_INTERFACES 3
 
+/* station and monitor interface */
+#define WLAN_STA_AND_MON_INTERFACES 2
+
 #ifdef WLAN_FEATURE_GTK_OFFLOAD
 #define GTK_OFFLOAD_ENABLE  0
 #define GTK_OFFLOAD_DISABLE 1
@@ -266,6 +287,8 @@ typedef v_U8_t tWlanHddMacAddr[HDD_MAC_ADDR_LEN];
 #define MDNS_CLASS                                1
 #define MDNS_TTL                                  5
 #endif /* MDNS_OFFLOAD */
+
+#define VENDOR_AP_OUI_SIZE 3
 
 #define HDD_MIN_TX_POWER (-100) /* minimum tx power */
 #define HDD_MAX_TX_POWER (+100)  /* maximum tx power */
@@ -1018,6 +1041,7 @@ typedef struct hdd_scaninfo_s
    v_TIME_t     last_scan_timestamp;
    tANI_U8 last_scan_channelList[WNI_CFG_VALID_CHANNEL_LIST_LEN];
    tANI_U8 last_scan_numChannels;
+   bool no_cck;
 
 }hdd_scaninfo_t;
 
@@ -1814,6 +1838,9 @@ struct hdd_context_s
     /* work queue ecsa channel change on SAP */
    struct delayed_work ecsa_chan_change_work;
 
+    /* used to enable roaming back after monitor mode stop */
+    v_BOOL_t roaming_ini_original;
+
     uint32_t track_arp_ip;
 };
 
@@ -2229,4 +2256,74 @@ hdd_capture_tsf(hdd_adapter_t *adapter, uint32_t *buf, int len)
 }
 #endif
 int hdd_dhcp_mdns_offload(hdd_adapter_t *adapter);
+
+/**
+ * wlan_hdd_stop_mon() - stop monitor mode
+ * @hdd_ctx: pointer to hdd context
+ * @wait: used to wait for completion event from firmware
+ *
+ * Return: 0 - success, negative value -failure
+ */
+int wlan_hdd_stop_mon(hdd_context_t *hdd_ctx, bool wait);
+
+/**
+ * wlan_hdd_check_monitor_state() - check monitor state
+ * @hdd_ctx: pointer to hdd context
+ *
+ * This function is used to check whether capture of monitor mode is ON/OFF
+ *
+ * Return: true - capture is ON, false - capture is OFF
+ */
+bool wlan_hdd_check_monitor_state(hdd_context_t *hdd_ctx);
+
+/**
+ * hdd_disable_roaming() - disable sme roaming
+ * @hdd_ctx: pointer to hdd context
+ *
+ * This function is used to disable FT roaming, one of the use-case
+ * is to disable when monitor mode starts
+ *
+ * Return: None
+ */
+void hdd_disable_roaming(hdd_context_t *hdd_ctx);
+
+/**
+ * hdd_disable_roaming() - enable sme roaming
+ * @hdd_ctx: pointer to hdd context
+ *
+ * This function is used to enable FT roaming, if roaming is enabled before
+ * invocation of hdd_disable_roaming(), one of the use-case is to re-enable
+ * roaming when monitor mode stops
+ *
+ * Return: None
+ */
+void hdd_restore_roaming(hdd_context_t *hdd_ctx);
+
+int wlan_hdd_check_and_stop_mon(hdd_adapter_t *sta_adapter, bool wait);
+
+/**
+ * hdd_is_sta_sap_scc_allowed_on_dfs_chan() - check if sta+sap scc allowed on
+ * dfs chan
+ * @hdd_ctx: pointer to hdd context
+ *
+ * This function used to check if sta+sap scc allowed on DFS channel.
+ *
+ * Return: None
+ */
+bool hdd_is_sta_sap_scc_allowed_on_dfs_chan(hdd_context_t *hdd_ctx);
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0))
+static inline int
+hdd_wlan_nla_put_u64(struct sk_buff *skb, int attrtype, u64 value)
+{
+	return nla_put_u64(skb, attrtype, value);
+}
+#else
+static inline int
+hdd_wlan_nla_put_u64(struct sk_buff *skb, int attrtype, u64 value)
+{
+	return nla_put_u64_64bit(skb, attrtype, value, NL80211_ATTR_PAD);
+}
+#endif
+
 #endif    // end #if !defined( WLAN_HDD_MAIN_H )
