@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -573,7 +573,7 @@ int __hdd_softap_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
          goto xmit_done;
       }
    }
-   dev->trans_start = jiffies;
+   netif_trans_update(dev);
 
    VOS_TRACE( VOS_MODULE_ID_HDD_SAP_DATA, VOS_TRACE_LEVEL_INFO_LOW,
               "%s: exit", __func__);
@@ -756,9 +756,7 @@ void __hdd_softap_tx_timeout(struct net_device *dev)
    int status = 0;
    hdd_context_t *pHddCtx;
 
-   VOS_TRACE( VOS_MODULE_ID_HDD_SAP_DATA, VOS_TRACE_LEVEL_ERROR,
-      "%s: Transmission timeout occurred jiffies %lu dev->trans_start %lu",
-        __func__, jiffies, dev->trans_start);
+   TX_TIMEOUT_TRACE(dev, VOS_MODULE_ID_HDD_DATA);
 
    if ( NULL == pAdapter )
    {
@@ -2127,6 +2125,12 @@ VOS_STATUS hdd_softap_stop_bss( hdd_adapter_t *pAdapter)
                        "%s: Failed to deregister sta Id %d", __func__, staId);
             }
        }
+    }
+
+    /* Mark the indoor channel (passive) to enable */
+    if (pHddCtx->cfg_ini->disable_indoor_channel) {
+        hdd_update_indoor_channel(pHddCtx, false);
+        sme_update_channel_list((tpAniSirGlobal)pHddCtx->hHal);
     }
 
     return vosStatus;

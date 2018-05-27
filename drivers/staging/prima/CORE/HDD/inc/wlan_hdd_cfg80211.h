@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -103,6 +103,12 @@
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0)) \
 	|| defined(BACKPORTED_CHANNEL_SWITCH_PRESENT)
 #define CHANNEL_SWITCH_SUPPORTED
+#endif
+
+#if defined(CFG80211_DEL_STA_V2) || \
+	(LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) || \
+	defined(WITH_BACKPORTS)
+#define USE_CFG80211_DEL_STA_V2
 #endif
 
 #define MAX_CHANNEL NUM_2_4GHZ_CHANNELS + NUM_5GHZ_CHANNELS
@@ -1587,6 +1593,34 @@ extern void wlan_hdd_cfg80211_update_replayCounterCallback(void *callbackContext
 void* wlan_hdd_change_country_code_cb(void *pAdapter);
 void hdd_select_cbmode( hdd_adapter_t *pAdapter,v_U8_t operationChannel);
 
+/*
+ * hdd_update_indoor_channel() - enable/disable indoor channel
+ * @hdd_ctx: hdd context
+ * @disable: whether to enable / disable indoor channel
+ *
+ * enable/disable indoor channel in wiphy/cds
+ *
+ * Return: void
+ */
+void hdd_update_indoor_channel(hdd_context_t *hdd_ctx,
+    bool disable);
+
+/*
+ * hdd_modify_indoor_channel_state_flags() - modify wiphy flags and cds state
+ * @wiphy_chan: wiphy channel number
+ * @rfChannel: channel hw value
+ * @disable: Disable/enable the flags
+ *
+ * Modify wiphy flags and cds state if channel is indoor.
+ *
+ * Return: void
+ */
+void hdd_modify_indoor_channel_state_flags(
+    struct ieee80211_channel *wiphy_chan,
+    v_U32_t rfChannel,
+    bool disable);
+
+
 v_U8_t* wlan_hdd_cfg80211_get_ie_ptr(
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
                                      const v_U8_t *pIes,
@@ -1615,7 +1649,9 @@ void wlan_hdd_cfg80211_oemdata_callback(void *ctx, const tANI_U16 evType,
                                       void *pMsg,  tANI_U32 evLen);
 #endif /* FEATURE_OEM_DATA_SUPPORT */
 
-#if !(defined (SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC))
+#if !(defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) && \
+	(LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)) && \
+	!(defined(WITH_BACKPORTS))
 static inline struct sk_buff *
 backported_cfg80211_vendor_event_alloc(struct wiphy *wiphy,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
@@ -1674,7 +1710,7 @@ struct cfg80211_bss* wlan_hdd_cfg80211_update_bss_list(
 
 struct cfg80211_bss *wlan_hdd_cfg80211_inform_bss_frame(hdd_adapter_t *pAdapter,
 		tSirBssDescription *bss_desc);
-#ifdef CFG80211_DEL_STA_V2
+#ifdef USE_CFG80211_DEL_STA_V2
 int wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
                                   struct net_device *dev,
                                   struct station_del_parameters *param);

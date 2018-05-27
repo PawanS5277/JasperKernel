@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -58,6 +58,7 @@
 #include "limSendMessages.h"
 #include "limApi.h"
 #include "wmmApsd.h"
+#include "limSessionUtils.h"
 
 #ifdef WLAN_FEATURE_RMC
 #include "limRMC.h"
@@ -1260,11 +1261,12 @@ __limProcessSmeScanReq(tpAniSirGlobal pMac, tANI_U32 *pMsgBuf)
     sirCopyMacAddr(pMac->lim.gSelfMacAddr,  pScanReq->selfMacAddr);
 
    /* Check if scan req is not valid or link is already suspended*/
-    if (!limIsSmeScanReqValid(pMac, pScanReq) || limIsLinkSuspended(pMac))
+    if (!limIsSmeScanReqValid(pMac, pScanReq) ||
+        limIsLinkSuspended(pMac) || limIsChanSwitchRunning(pMac))
     {
         limLog(pMac, LOGE,
-         FL("Received SME_SCAN_REQ with invalid params or link is suspended %d"),
-          limIsLinkSuspended(pMac));
+         FL("Received SME_SCAN_REQ with invalid params or link is suspended %d limIsChanSwitchRunning %d"),
+          limIsLinkSuspended(pMac), limIsChanSwitchRunning(pMac));
 
         if (pMac->lim.gLimRspReqd)
         {
@@ -5629,16 +5631,7 @@ static void lim_register_mgmt_frame_ind_cb(tpAniSirGlobal pMac,
       limLog(pMac, LOGE, FL("sme_req->callback is null"));
 }
 
-/**
- * lim_send_chan_switch_action_frame() - send channel switch action frame to all
- * connected peers
- * @mac_ctx: Pointer to Global MAC structure
- * @new_channel: new channel
- * @session_entry: ap session
- *
- * Return: None
- */
-static void lim_send_chan_switch_action_frame(tpAniSirGlobal mac_ctx,
+void lim_send_chan_switch_action_frame(tpAniSirGlobal mac_ctx,
      uint16_t new_channel, tpPESession session_entry)
 {
    uint16_t op_class;
