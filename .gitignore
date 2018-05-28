@@ -47,6 +47,9 @@ Module.symvers
 /System.map
 /Module.markers
 
+# msm/ipa
+drivers/platform/msm/ipa/ipa_common
+
 #
 # Debian directory (make deb-pkg)
 #
@@ -96,3 +99,8 @@ x509.genkey
 
 # Kconfig presets
 all.config
+/out
+/zip
+build.sh
+jas.sh
+clang.sh
