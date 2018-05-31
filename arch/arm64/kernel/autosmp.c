@@ -413,11 +413,11 @@ static int set_enabled(const char *val,
 			return ret;
 #endif
 		asmp_stop();
-#ifdef CONFIG_THERMAL_MONITOR
-		external_core_control_panel(true);
-#endif
 #ifdef CONFIG_SCHED_CORE_CTL
 		disable_core_control(false);
+#endif
+#ifdef CONFIG_THERMAL_MONITOR
+		external_core_control_panel(true);
 #endif
 	}
 	return ret;

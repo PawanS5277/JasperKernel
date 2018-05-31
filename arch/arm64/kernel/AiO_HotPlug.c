@@ -312,11 +312,11 @@ static ssize_t store_toggle(struct kobject *kobj,
 	   AiO_HotPlug_start();
 	} else {
 	   AiO_HotPlug_stop();
-#ifdef CONFIG_THERMAL_MONITOR
-	   external_core_control_panel(true);
-#endif
 #ifdef CONFIG_SCHED_CORE_CTL
 	   disable_core_control(false);
+#endif
+#ifdef CONFIG_THERMAL_MONITOR
+	   external_core_control_panel(true);
 #endif
 	}
 	return count;
