@@ -1602,9 +1602,7 @@ eHalStatus sme_Open(tHalHandle hHal)
 
       sme_p2pOpen(pMac);
       smeTraceInit(pMac);
-#ifdef SME_TRACE_RECORD
       sme_register_debug_callback();
-#endif
 
    }while (0);
 
@@ -2540,6 +2538,30 @@ static VOS_STATUS sme_ecsa_msg_processor(tpAniSirGlobal mac_ctx,
    return VOS_STATUS_SUCCESS;
 }
 
+static bool sme_get_sessionid_from_scan_cmd(tpAniSirGlobal mac,
+    tANI_U32  *session_id)
+{
+    tListElem *entry = NULL;
+    tSmeCmd *command = NULL;
+    bool active_scan = false;
+
+    if (!mac->fScanOffload) {
+        entry = csrLLPeekHead(&mac->sme.smeCmdActiveList, LL_ACCESS_LOCK);
+    } else {
+        entry = csrLLPeekHead(&mac->sme.smeScanCmdActiveList, LL_ACCESS_LOCK);
+    }
+
+    if (entry) {
+        command = GET_BASE_ADDR(entry, tSmeCmd, Link);
+        if (command->command == eSmeCommandScan) {
+            *session_id = command->sessionId;
+            active_scan = true;
+        }
+    }
+
+    return active_scan;
+}
+
 /*--------------------------------------------------------------------------
 
   \brief sme_ProcessMsg() - The main message processor for SME.
@@ -2736,11 +2758,18 @@ eHalStatus sme_ProcessMsg(tHalHandle hHal, vos_msg_t* pMsg)
                 {
                    tSirSmeCoexInd *pSmeCoexInd = (tSirSmeCoexInd *)pMsg->bodyptr;
                    vos_msg_t vosMessage = {0};
+                   tANI_U32 session_id = 0;
+                   bool active_scan;
 
                    if (pSmeCoexInd->coexIndType == SIR_COEX_IND_TYPE_DISABLE_AGGREGATION_IN_2p4)
                    {
                        pMac->btc.agg_disabled = true;
                        smsLog( pMac, LOG1, FL("SIR_COEX_IND_TYPE_DISABLE_AGGREGATION_IN_2p4"));
+                       active_scan = sme_get_sessionid_from_scan_cmd(pMac,
+                                                                   &session_id);
+                       if (active_scan)
+                           sme_AbortMacScan(hHal, session_id,
+                                            eCSR_SCAN_ABORT_DEFAULT);
                        sme_RequestFullPower(hHal, NULL, NULL, eSME_REASON_OTHER);
                        pMac->isCoexScoIndSet = 1;
                        pMac->scan.fRestartIdleScan = eANI_BOOLEAN_FALSE;
@@ -7003,7 +7032,6 @@ VOS_STATUS sme_DbgWriteMemory(tHalHandle hHal, v_U32_t memAddr, v_U8_t *pBuf, v_
 }
 
 
-#ifdef WLAN_DEBUG
 void pmcLog(tpAniSirGlobal pMac, tANI_U32 loglevel, const char *pString, ...)
 {
     VOS_TRACE_LEVEL  vosDebugLevel;
@@ -7024,6 +7052,7 @@ void pmcLog(tpAniSirGlobal pMac, tANI_U32 loglevel, const char *pString, ...)
 
 void smsLog(tpAniSirGlobal pMac, tANI_U32 loglevel, const char *pString,...)
 {
+#ifdef WLAN_DEBUG
     // Verify against current log level
     if ( loglevel > pMac->utils.gLogDbgLevel[LOG_INDEX_FOR_MODULE( SIR_SMS_MODULE_ID )] )
         return;
@@ -7037,8 +7066,8 @@ void smsLog(tpAniSirGlobal pMac, tANI_U32 loglevel, const char *pString,...)
 
         va_end( marker );              /* Reset variable arguments.      */
     }
-}
 #endif
+}
 
 /* ---------------------------------------------------------------------------
     \fn sme_GetWcnssWlanCompiledVersion
